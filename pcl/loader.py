@@ -22,11 +22,12 @@ class PreImager(tud.Dataset):
 
         self.aug = aug
         self.images = img_class
+        self.loader = data_meta.loader
 
     def __getitem__(self, index):
         imgs = []
         for i in range(self.class_number):
-            img = image.read_image(self.images[i][index]).float()
+            img = self.loader(self.images[i][index])
             out = self.aug(img)
             imgs.append(out)
         return imgs, index
