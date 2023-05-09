@@ -9,13 +9,13 @@ def parser():
     _parser = argparse.ArgumentParser(description='PyTorch ImageNet Training PCL')
     _parser.add_argument('data', metavar='DIR',
                          help='path to dataset')
-    _parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet50',
+    _parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                          choices=model_names,
                          help='model architecture: ' +
                               ' | '.join(model_names) +
                               ' (default: resnet50)')
-    _parser.add_argument('-j', '--workers', default=32, type=int, metavar='N',
-                         help='number of data loading workers (default: 32)')
+    _parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
+                         help='number of data loading workers (default: 8)')
     _parser.add_argument('--epochs', default=200, type=int, metavar='N',
                          help='number of total epochs to run')
     _parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
@@ -34,8 +34,10 @@ def parser():
     _parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                          metavar='W', help='weight decay (default: 1e-4)',
                          dest='weight_decay')
-    _parser.add_argument('-p', '--print-freq', default=100, type=int,
+    _parser.add_argument('-p', '--print-freq', default=10, type=int,
                          metavar='N', help='print frequency (default: 10)')
+    _parser.add_argument('--save-freq', default=10, type=int,
+                         metavar='N', help='save frequency (default: 10)')
     _parser.add_argument('--resume', default='', type=str, metavar='PATH',
                          help='path to latest checkpoint (default: none)')
     _parser.add_argument('--world-size', default=-1, type=int,
@@ -58,7 +60,7 @@ def parser():
 
     _parser.add_argument('--low-dim', default=128, type=int,
                          help='feature dimension (default: 128)')
-    _parser.add_argument('--pcl-r', default=16384, type=int,
+    _parser.add_argument('--pcl-r', default=16, type=int,
                          help='queue size; number of negative pairs; needs to be smaller than num_cluster (default: '
                               '16384)')
     _parser.add_argument('--moco-m', default=0.999, type=float,
@@ -73,11 +75,17 @@ def parser():
     _parser.add_argument('--cos', action='store_true',
                          help='use cosine lr schedule')
 
-    _parser.add_argument('--num-cluster', default='25000,50000,100000', type=str,
+    _parser.add_argument('--num-cluster', default='20,25,30', type=str,
                          help='number of clusters')
     _parser.add_argument('--warmup-epoch', default=20, type=int,
                          help='number of warm-up epochs to only train with InfoNCE loss')
-    _parser.add_argument('--exp-dir', default='experiment_pcl', type=str,
+    _parser.add_argument('--exp-dir', default='experiment', type=str,
                          help='experiment directory')
+
+    _parser.add_argument('--cost', type=str, default='0.5')
+
+    _parser.add_argument('--num-class', type=int, default=20)
+    _parser.add_argument('--pretrained', default='', type=str,
+                        help='path to pretrained checkpoint')
 
     return _parser

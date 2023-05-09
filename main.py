@@ -153,8 +153,9 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.deterministic = True
 
     # Data loading code
-    pre_train_dir = os.path.join(args.data, 'train')
+    pre_train_dir = os.path.join(args.data, 'pre_train')
     train_dir = os.path.join(args.data, 'train')
+    eval_dir = os.path.join(args.data, 'train')
 
     if args.aug_plus:
         # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
@@ -172,7 +173,7 @@ def main_worker(gpu, ngpus_per_node, args):
         train_dir,
         pcl.loader.TwoCropsTransform(eval_augmentation))
     eval_dataset = pcl.loader.ImageFolderInstance(
-        train_dir,
+        eval_dir,
         eval_augmentation)
 
     if args.distributed:
@@ -245,7 +246,7 @@ def main_worker(gpu, ngpus_per_node, args):
         else:
             train(pre_train_loader, model, criterion, optimizer, epoch, args, cluster_result)
 
-        if (epoch + 1) % 10 == 0 and (not args.multiprocessing_distributed or (args.multiprocessing_distributed
+        if (epoch + 1) % args.save_freq == 0 and (not args.multiprocessing_distributed or (args.multiprocessing_distributed
                                                                                and args.rank % ngpus_per_node == 0)):
             save_checkpoint({
                 'epoch': epoch + 1,
