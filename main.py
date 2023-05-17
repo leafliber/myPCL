@@ -15,8 +15,6 @@ import torch.optim
 import torch.multiprocessing as mp
 import torch.utils.data
 import torch.utils.data.distributed
-import torchvision.transforms as transforms
-import torchvision.datasets as datasets
 import torchvision.models as models
 
 from scripts.parser import parser
@@ -24,11 +22,13 @@ from scripts.meter import AverageMeter, ProgressMeter
 import scripts.augmentation as aug
 import scripts.momentum as momentum
 import scripts.clustering as clustering
+import scripts.loss as loss_script
+from scripts.data_process import data_process
 import pcl.builder
 import pcl.loader
 
 
-def main_loader():
+def worker_loader():
     args = parser().parse_args()
 
     if args.seed is not None:
@@ -61,14 +61,15 @@ def main_loader():
         args.world_size = ngpus_per_node * args.world_size
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
-        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
+        mp.spawn(worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
         # Simply call main_worker function
-        main_worker(args.gpu, ngpus_per_node, args)
+        worker(args.gpu, ngpus_per_node, args)
 
 
-def main_worker(gpu, ngpus_per_node, args):
+def worker(gpu, ngpus_per_node, args):
     args.gpu = gpu
+    args.multiprocessing_distributed = True
 
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
@@ -157,13 +158,6 @@ def main_worker(gpu, ngpus_per_node, args):
     train_dir = os.path.join(args.data, 'train')
     eval_dir = os.path.join(args.data, 'train')
 
-    if args.aug_plus:
-        # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
-        augmentation = aug.moco_v2()
-    else:
-        # MoCo v1's aug: same as InstDisc https://arxiv.org/abs/1805.01978
-        augmentation = aug.moco_v1()
-
     # center-crop augmentation
     eval_augmentation = aug.moco_eval()
 
@@ -248,12 +242,12 @@ def main_worker(gpu, ngpus_per_node, args):
 
         if (epoch + 1) % args.save_freq == 0 and (not args.multiprocessing_distributed or (args.multiprocessing_distributed
                                                                                and args.rank % ngpus_per_node == 0)):
-            save_checkpoint({
+            torch.save({
                 'epoch': epoch + 1,
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
-            }, is_best=False, filename='{}/checkpoint_{:04d}.pth.tar'.format(args.exp_dir, epoch))
+            }, '{}/checkpoint_{:04d}.pth.tar'.format(args.exp_dir, epoch))
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args, cluster_result=None):
@@ -276,46 +270,18 @@ def train(train_loader, model, criterion, optimizer, epoch, args, cluster_result
         # measure data loading time
         data_time.update(time.time() - end)
 
-        im_q = []
-        im_k = []
-        if cluster_result is None:
-            class_number = len(images)
-            class_len = len(images[0])
-            for _i in range(0, class_len, 2):
-                for c in range(class_number):
-                    im_q.append(images[c][_i])
-                    im_k.append(images[c][_i+1])
-            im_q = torch.stack(im_q)
-            im_k = torch.stack(im_k)
-        else:
-            im_q = images[0]
-            im_k = images[1]
-
-        if args.gpu is not None:
-            im_q = im_q.cuda(args.gpu, non_blocking=True)
-            im_k = im_k.cuda(args.gpu, non_blocking=True)
+        im_q, im_k = data_process(cluster_result, images, args.gpu)
 
         # compute output
         output, target, output_proto, target_proto = model(im_q=im_q, im_k=im_k,
                                                            cluster_result=cluster_result, index=index)
 
-        # InfoNCE loss
-        loss = criterion(output, target)
+        loss = loss_script.proto_with_quality(output, target, output_proto, target_proto, criterion, acc_proto, images,
+                                              args.num_cluster)
 
-        # ProtoNCE loss
-        if output_proto is not None:
-            loss_proto = 0
-            for proto_out, proto_target in zip(output_proto, target_proto):
-                loss_proto += criterion(proto_out, proto_target)
-                accp = accuracy(proto_out, proto_target)[0]
-                acc_proto.update(accp[0], images[0].size(0))
-
-            # average loss across all sets of prototypes
-            loss_proto /= len(args.num_cluster)
-            loss += loss_proto
 
         losses.update(loss.item(), images[0].size(0))
-        acc = accuracy(output, target)[0]
+        acc = loss_script.accuracy(output, target)[0]
         acc_inst.update(acc[0], images[0].size(0))
 
         # compute gradient and do SGD step
@@ -343,29 +309,5 @@ def adjust_learning_rate(optimizer, epoch, args):
         param_group['lr'] = lr
 
 
-def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
-    with torch.no_grad():
-        maxk = max(topk)
-        batch_size = target.size(0)
-
-        _, pred = output.topk(maxk, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-        res = []
-        for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res
-
-
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
-    torch.save(state, filename)
-    print("Model saved as:"+filename)
-    if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
-
-
 if __name__ == '__main__':
-    main_loader()
+    worker_loader()

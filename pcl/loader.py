@@ -35,6 +35,13 @@ class PreImager(tud.Dataset):
     def __len__(self):
         return self.length
 
+class TenserImager(datasets.ImageFolder):
+    def __getitem__(self, index):
+        path, target = self.samples[index]
+        sample = self.loader(path)
+        sample = self.transform(sample)
+        return sample, target
+
 
 class TwoCropsTransform:
     """Take two random crops of one image as the query and key."""
