@@ -2,7 +2,6 @@ import builtins
 import math
 import os
 import random
-import shutil
 import time
 import warnings
 
@@ -159,16 +158,15 @@ def worker(gpu, ngpus_per_node, args):
     eval_dir = os.path.join(args.data, 'train')
 
     # center-crop augmentation
-    eval_augmentation = aug.moco_eval()
 
-    pre_train_dataset = pcl.loader.PreImager(pre_train_dir, eval_augmentation)
+    pre_train_dataset = pcl.loader.PreImager(pre_train_dir, aug.moco_eval())
 
     train_dataset = pcl.loader.ImageFolderInstance(
         train_dir,
-        pcl.loader.TwoCropsTransform(eval_augmentation))
+        pcl.loader.TwoCropsTransform(aug.only_rotate()))
     eval_dataset = pcl.loader.ImageFolderInstance(
         eval_dir,
-        eval_augmentation)
+        aug.moco_eval())
 
     if args.distributed:
         pre_train_sampler = torch.utils.data.distributed.DistributedSampler(pre_train_dataset)

@@ -2,7 +2,6 @@ from PIL import ImageFilter
 import random
 import torch.utils.data as tud
 import torchvision.datasets as datasets
-from torchvision.io import image
 
 
 class PreImager(tud.Dataset):

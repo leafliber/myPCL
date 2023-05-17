@@ -1,4 +1,6 @@
 import torch
+
+
 def data_process(cluster_result, images, gpu):
     im_q = []
     im_k = []
